@@ -14,29 +14,14 @@ param service_name string
 @description('Target ACA environment name for all services')
 param aca_env_name string
 
-@description('Name of the Azure container registry. If all containers are in a public registry, this is not required')
+@description('Name of the Azure container registry. Only required if container images are in an Azure Container Registry')
 param container_registry_name string = ''
 
 @description('Name of a the key vault. Only required if secret environment variables are specificed in service_params')
 param key_vault_name string = ''
 
-@description('Name of the storage account that will host Azure Files share')
-param files_storage_account_name string
-
-// Pull in existing resources
-resource aca_env 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
-  name: aca_env_name
-}
-
-
-resource storage_account 'Microsoft.Storage/storageAccounts@2021-04-01' existing = {
-  name: files_storage_account_name
-}
-
-resource storage_account_files 'Microsoft.Storage/storageAccounts/fileServices@2021-04-01' existing = {
-  parent: storage_account
-  name: 'default'
-}
+@description('Name of the storage account that will host Azure Files share. Only required if volume mounts are specified in service_params')
+param files_storage_account_name string = ''
 
 @description('Parameters for the service')
 param service_params object
@@ -91,10 +76,10 @@ var volume_mounts = [
       }
 ]
 
-var volumes = [
+var volumes = empty(container_registry_name) ? [] : [
   {
     name: volume_name
-    storageName: file_share_aca.name
+    storageName: '${service_name}-files-env'
     storageType: 'AzureFile'
   }
 ]
@@ -115,28 +100,7 @@ resource service_identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023
   location: location
 }
 
-// File Share
-resource file_share 'Microsoft.Storage/storageAccounts/fileServices/shares@2021-04-01' = {
-  parent: storage_account_files
-  name: '${service_name}-files-share'
-  properties: {
-    accessTier: 'Hot'
-  }
-}
 
-// File Share on Container App Environment
-resource file_share_aca 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
-  name: '${service_name}-files-env'
-  parent: aca_env
-  properties: {
-    azureFile: {
-      accessMode: 'ReadWrite'
-      accountKey: storage_account.listKeys().keys[0].value
-      accountName: files_storage_account_name
-      shareName: '${service_name}-files-share'
-    }
-  }
-}
 
 // Role assignments - only create if required
 
@@ -156,6 +120,16 @@ module service_kv_ra '3b.kv_role_assigment_and_secrets.bicep' = if (!empty(key_v
     service_name: service_name
     principalId: service_identity.properties.principalId
     secrets: service_params.?envs_secret ?? {}
+  }
+}
+
+module file_share '3c.file_share.bicep' = if (!empty(files_storage_account_name)) {
+  name: '${service_name}_file_share'
+  params: {
+    service_name: service_name
+    aca_env_name: aca_env_name
+    files_storage_account_name: files_storage_account_name
+    
   }
 }
 

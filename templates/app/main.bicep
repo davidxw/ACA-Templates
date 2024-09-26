@@ -1,14 +1,14 @@
 @description('Name of the container app environment')
 param aca_env_name string
 
-@description('Name of the Azure container registry. If all containers are in a public registry, this is not required')
+@description('Name of the Azure container registry. Only required if container images are in an Azure Container Registry')
 param container_registry_name string = ''
 
 @description('Name of a the key vault. Only required if secret environment variables are specificed in service_params')
 param key_vault_name string = ''
 
-@description('Name of the storage account that will host Azure Files share')
-param files_storage_account_name string
+@description('Name of the storage account that will host Azure Files share. Only required if volume mounts are specified in service_params')
+param files_storage_account_name string = ''
 
 param service_params array
 // [
