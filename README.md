@@ -1,10 +1,15 @@
 # Bicep Templates for Azure Container Apps
 
-![Overview diagram](./docs/overview.png)
+This repository contains Bicep templates to deploy Azure Container Apps infrastructure and services. The templates are divided into two directories:
+
+* `infra` - contains the Bicep templates to deploy an Azure Container Apps Environment and supporting services. Use these templates if you don't already have an existing container apps environment.
+* `apps` - contains the Bicep templates to deploy container app services. Use these templates to deploy your container app services into an existing container apps environment.
 
 ## Infra
 
 Infrastructure deployed to host Azure Container Apps. Deploy only if you don't already have an existing container apps environment (e.g. the [Azure Container Apps Landing Zone Accelerator](https://github.com/Azure/aca-landing-zone-accelerator)):
+
+![Overview diagram](./docs/overview.png)
 
 * Log Analytics Workspace
 * Azure Key Vault using the Azure RBAC permissions model. You will have to make yourself a Secrets adminstrator if you would like view and update secrets 
@@ -30,11 +35,8 @@ az deployment group create --resource-group containerAppResourceGroup --paramete
 
 ## Apps
 
-After the infra has been deployed you can deploy the your container app services.  The templates can handle either container images from docker.io, or from an Azure Container Registry.  If you would like to copy public images into your ACR you ca use the command below:
+The Apps templates deploy container apps into container app environments, including configuration for environment variables and volume mounts. The templates can handle either container images from docker.io, or from an Azure Container Registry.  
 
-```bash
-az acr import  --name dssContainerRegistry --source docker.io/davidxw/webtest:latest  --image davidxw/webtest:latest
-```
 To deploy your apps:
 
 * Change to the `templates\apps`  directory 
@@ -89,3 +91,11 @@ Notes:
 * The deployment creates an Azure Files Share for each service, and mounts all the specified volume mounts for a service to that share. `subPath` is optional, and if not specified the volume mount will be mounted to the root of the share.
 * All items in `envs_secret` are stored in the Azure Key Vault, with the env name as the secret name. A container app secret is create for each (referencing the Key Vault secret), and the container app environment variable references the Container App secret.
 * Currently only one container per service is supported.
+
+### Copying public images into your ACR
+
+If you would like to copy public images into your ACR you can use the command below:
+
+```bash
+az acr import  --name dssContainerRegistry --source docker.io/davidxw/webtest:latest  --image davidxw/webtest:latest
+```
