@@ -11,6 +11,9 @@ param core_subnet_name string = ''
 
 // End core networking
 
+@description('Is the ACA environment internal')
+param aca_is_internal bool = false
+
 @description('Name of the the environment which is used to generate a short unique hash used in all resources.')
 param name string
 
@@ -90,6 +93,7 @@ module container_app_environment '2.container_app_environment.bicep' = {
     vnet_resource_group : vnet_resource_group_resolved
     core_subnet_name: core_subnet_name_resolved
     aca_env_name: aca_env_name
+    aca_is_internal: aca_is_internal
     laws_name: laws_name
     custom_domain_name: custom_domain_name
     custom_domain_certificate_password: custom_domain_certificate_password

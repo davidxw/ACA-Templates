@@ -12,6 +12,9 @@ param core_subnet_name string
 @description('Name of the container app environment')
 param aca_env_name string
 
+@description('Is the ACA environment internal')
+param aca_is_internal bool = false
+
 @description('Name of the log analytics workspace to use for app logs')
 param laws_name string
 
@@ -43,7 +46,7 @@ resource aca_env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   location: location
   properties: {
     vnetConfiguration: {
-      internal: true
+      internal: aca_is_internal
       infrastructureSubnetId: core_subnet.id
     }
     appLogsConfiguration: {
@@ -68,8 +71,8 @@ resource aca_env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-//create dns entry for default domain
-module private_dns_defult '2b.private_dns.bicep' = {
+// create dns entry for default domain - only required for internal ACA environment
+module private_dns_defult '2b.private_dns.bicep' = if (aca_is_internal) {
   name: 'private_dns_default'
   params: {
     vnet_name: vnet.name

@@ -80,8 +80,12 @@ resource storage_account 'Microsoft.Storage/storageAccounts@2021-04-01' = {
   }
 }
 
-resource storage_account_files 'Microsoft.Storage/storageAccounts/fileServices@2021-04-01' = {
+resource storage_account_files 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
   parent: storage_account
   name: 'default'
+  properties: {
+    shareDeleteRetentionPolicy: {
+      allowPermanentDelete: true
+    }
+  }
 }
-

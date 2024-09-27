@@ -16,6 +16,9 @@ param files_storage_account_name string = ''
 param service_params object
 //   {
 //     name: 'service-name'
+//     is_ingress_external: true
+//     target_port: 80
+//     workload_profile: 'Consumption
 //     container_name: 'container-name'
 //     container_image: 'path/image:tag'
 //     envs: {
@@ -35,56 +38,130 @@ param service_params object
 
 func safe_secret_name(secret_name string) string => replace(toLower(secret_name), '_', '-')
 
-var backend_service_name = service_params.name
-
-var identity_id = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroup().name}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/${backend_service_name}-identity'
+var service_name = service_params.name
 
 // Pull in existing resources
 resource aca_env 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: aca_env_name
 }
 
-// Common resources
-module service_common './2.service_common.bicep' = {
-  name: '${backend_service_name}_commnon'
+////
+//// Create envrionment variable array - will be a combination clear variables and secret references
+////
+
+
+// clear envs
+var clear_envs = [
+  // if envs is not defined, loop through an empty object
+  for env in items(service_params.?envs ?? {}) : {
+    name: env.key
+    value: env.value
+  }
+] 
+
+// secret envs
+var secret_envs = [
+  for secret in items(service_params.?envs_secret ?? {}) : {
+    name: secret.key
+    secretRef: safe_secret_name(secret.key)
+  }
+]
+
+
+// ACA secrets - referenced by secret envs
+var aca_secrets = [
+  for (secret, i) in items(service_params.?envs_secret ?? {}) : {
+    name: safe_secret_name(secret.key)
+    keyVaultUrl: 'https://${key_vault_name}.vault.azure.net/secrets/${service_name}-${safe_secret_name(secret.key)}' 
+    identity: service_identity.id
+  }
+]
+
+var all_envs = union(clear_envs, secret_envs)
+
+////
+//// Create an identity for the container app
+////
+
+resource service_identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${service_name}-identity'
+  location: location
+}
+
+
+////
+//// Volume Mounts - only created if volume mounts are specified
+////
+
+var volume_name = '${service_params.name}-files-vol'
+//var volume_name = 'filesvol'
+
+var volume_mounts = [
+  for volume_mount in service_params.?volume_mounts ?? []: (contains(volume_mount, 'subPath'))
+    ? {
+        volumeName: volume_name
+        mountPath: volume_mount.mountPath
+        subPath: volume_mount.subPath
+      }
+    : {
+        volumeName: volume_name
+        mountPath: volume_mount.mountPath
+      }
+]
+
+var volumes = empty(files_storage_account_name) ? [] : [
+  {
+    name: volume_name
+    storageName: '${service_name}-files-env'
+    storageType: 'AzureFile'
+  }
+]
+
+module file_share '2c.file_share.bicep' = if (!empty(files_storage_account_name)) {
+  name: '${service_name}_file_share'
   params: {
-    service_name: backend_service_name
+    service_name: service_name
     aca_env_name: aca_env_name
-    container_registry_name: container_registry_name
-    key_vault_name: key_vault_name
     files_storage_account_name: files_storage_account_name
-    service_params: service_params
   }
 }
 
-// Service
-resource backend_service 'Microsoft.App/containerApps@2024-03-01' = {
-  name: backend_service_name
+////
+//// ACA Service
+////
+
+resource service 'Microsoft.App/containerApps@2024-03-01' = {
+  name: service_name
   location: location
+  dependsOn: [
+    file_share
+    service_acr_ra
+    service_kv_ra
+  ]
   properties: {
     environmentId: aca_env.id
-    workloadProfileName: service_params.workload_profile
+    workloadProfileName: service_params.workload_profile ?? 'Consumption'
     configuration: {
       ingress: {
-        external: service_params.is_ingress_external
-        targetPort: service_params.target_port
+        external: service_params.is_ingress_external ?? false
+        targetPort: service_params.target_port ?? '80'
       }
       registries: empty(container_registry_name) ? [] : [
         {
           server: '${toLower(container_registry_name)}.azurecr.io'
-          identity: service_common.outputs.identity_id
+          identity: service_identity.id
         }
       ]
-      secrets: service_common.outputs.aca_secrets
+      secrets: aca_secrets
     }
     template: {
-      volumes: service_common.outputs.aca_volumes
+      volumes: volumes
       containers: [
         {
-          name: service_params.container_name
+          name: service_params.container_name ?? service_name
           image: service_params.container_image
-          volumeMounts: service_common.outputs.volume_mounts
-          env: service_common.outputs.envs
+          volumeMounts: volume_mounts
+          env: all_envs
         }
       ]
     }
@@ -92,9 +169,34 @@ resource backend_service 'Microsoft.App/containerApps@2024-03-01' = {
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
-      // this is a bit of a hack. This property must be known at compile time, but because the identity is created in the common services module it isn't. 
-      // We can generate the id string but we rely on the name of the identity being that same as the name used by the module ("{service_name}-identity")
-      '${identity_id}' : {}
+      '${service_identity.id}' : {}
     }
+  }
+}
+
+////
+//// Role Assignments for container registry
+////
+
+module service_acr_ra '2a.acr_role_assigment.bicep' = if (!empty(container_registry_name)) {
+  name: '${service_name}_acr_role_assignment'
+  params: {
+    container_registry_name: container_registry_name
+    service_name: service_name
+    principalId: service_identity.properties.principalId
+  }
+}
+
+////
+//// Role Assignments for key vault, and key vauult secrets for secret envs
+////
+
+module service_kv_ra '2b.kv_role_assigment_and_secrets.bicep' = if (!empty(key_vault_name)) {
+  name: '${service_name}_kv_role_assignment'
+  params: {
+    key_vault_name: key_vault_name
+    service_name: service_name
+    principalId: service_identity.properties.principalId
+    secrets: service_params.?envs_secret ?? {}
   }
 }

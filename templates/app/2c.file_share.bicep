@@ -34,7 +34,7 @@ resource file_share_aca 'Microsoft.App/managedEnvironments/storages@2024-03-01' 
       accessMode: 'ReadWrite'
       accountKey: storage_account.listKeys().keys[0].value
       accountName: files_storage_account_name
-      shareName: '${service_name}-files-share'
+      shareName: file_share.name
     }
   }
 }

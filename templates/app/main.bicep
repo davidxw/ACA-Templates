@@ -14,6 +14,9 @@ param service_params array
 // [
 //   {
 //     name: 'service-name'
+//     is_ingress_external: true
+//     target_port: 80
+//     workload_profile: 'Consumption
 //     container_name: 'container-name'
 //     container_image: 'path/image:tag'
 //     envs: {
