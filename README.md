@@ -11,6 +11,8 @@ Infrastructure deployed to host Azure Container Apps. Deploy only if you don't a
 
 ![Overview diagram](./docs/overview.png)
 
+The template deploys the following services:
+
 * Log Analytics Workspace
 * Azure Key Vault using the Azure RBAC permissions model. You will have to make yourself a Secrets adminstrator if you would like view and update secrets 
 * Azure Container Registry
@@ -35,15 +37,15 @@ az deployment group create --resource-group containerAppResourceGroup --paramete
 
 ## Apps
 
-The Apps templates deploy container apps into container app environments, including configuration for environment variables and volume mounts. The templates can handle either container images from docker.io, or from an Azure Container Registry.  
+The Apps templates deploy container apps into container app environments, including configuration for environment variables and volume mounts. The templates can handle either container images from a public registry (docker hub), or from an Azure Container Registry.  
 
 To deploy your apps:
 
 * Change to the `templates\apps`  directory 
-* Create a copy of the `sample_apps.bicepparam` file and update the parameters accordingly. The only required parameters are the `aca_env_name` and `service_params` object (more on thie below). You may also need to specify the following parameters, depending on your requirements:
+* Create a copy of the `sample_apps.bicepparam` file and update the parameters accordingly. The only required parameters are the `aca_env_name` and `service_params` object (more on this below). You may also need to specify the following parameters, depending on your requirements:
   * `container_registry_name` - if your images are in an ACR
-  * `key_vault_name` - if you secret environment variables that need to be stored in a Key Vault
-  * `files_storage_account_name` - if you have volumn mounts that need to be stored in an Azure Files Share
+  * `key_vault_name` - if you have specificed secret environment variables that need to be stored in a Key Vault
+  * `files_storage_account_name` - if you have volume mounts
 * Run the following command to deploy the infrastructure:
 
 ```bash
@@ -52,41 +54,56 @@ az deployment group create --resource-group containerAppResourceGroup --paramete
 
 ### Service Params Object
 
-The app deployment template contains a `service_params` object that is used to configure the Container Apps. The object is a list of service configuration objects, one for each service. The format of the object is:
+The app deployment template contains a `service_params` object that is used to configure the Container Apps. The object is a list of service configuration objects, one for each service. 
+
+#### Minimum configuration:
 
 ```bicep
-  {
-    name: 'aca-service-1'
-    ingress_external: true
-    target_port: 80
-    workload_profile: 'Consumption'
-    container_name: 'webtest'
-    container_image: 'containerRegistry.azurecr.io/davidxw/webtest:latest'
-    envs: {
-      SQL_SERVER: 'sql_server'
-      SQL_DATABASE: 'sql_database'
-      SQL_USER: 'sql_user'
-    }
-    envs_secret: {
-      SQL_PASSWORD: 'secret string'
-    }
-    volume_mounts: [
-    {
-       mountPath: '/app/logs'
-       subPath: 'logs'
-     }
-    ]
-  }
+{
+  name: 'aca-service-1'
+  container_image: 'davidxw/webtest:latest'
+}
 ```
 
-Notes:
+#### Full configuration:
+```bicep
+{
+  name: 'aca-service-1'
+  ingress_external: true
+  target_port: 80
+  workload_profile: 'Consumption'
+  container_name: 'webtest'
+  container_image: 'containerRegistry.azurecr.io/davidxw/webtest:latest'
+  envs: {
+    SQL_SERVER: 'sql_server'
+    SQL_DATABASE: 'sql_database'
+    SQL_USER: 'sql_user'
+  }
+  envs_secret: {
+    SQL_PASSWORD: 'secret string'
+  }
+  volume_mounts: [
+  {
+      mountPath: '/app/logs'
+      subPath: 'logs'
+    }
+  ]
+}
+```
+#### Defaults:
+
+| Parameter | Default |
+| --- | --- |
+| `is_ingress_external` | `true` |
+| `target_port` | `80` |
+| `workload_profile` | `Consumption` |
+| `container_name` | The service name |
+
+#### Notes:
 
 * The only required propperties are `name` and `container_image`.
-* The template currently assumes that all containers have ingress enabled, use `is_ingress_external` to specify if the service should be exposed externally. If `is_ingress_external`not specified, the service will be exposed externally.
-* If `target_port` is not specified, the service will expect the container to listen on port 80.
-* If `workload_profile` is not specified, the service will use the Consumption plan.
-* If `container_name` is not specified, the service will use the service name as the container name.
-* If you container images is stored in ACR, you must included the registry name in the `container_image` parameter (e.g. `containerRegistry.azurecr.io/davidxw/webtest:latest`).
+* The template currently assumes that all containers have ingress enabled - there is currently no option to disable ingress.
+* If your container images is stored in ACR, you must included the registry name in the `container_image` parameter (e.g. `containerRegistry.azurecr.io/davidxw/webtest:latest`).
 * `envs`, `envs_secret`, and `volume_mounts` are optional. If `envs_secret` is specified, then a `key_vault_name` parameter must also be specified. If `volume_mounts` is specified, then a `files_storage_account_name` parameter must also be specified. If you are using a public image then only the path and tag are required (e.g. `davidxw/webtest:latest`).
 * The deployment creates an Azure Files Share for each service, and mounts all the specified volume mounts for a service to that share. `subPath` is optional, and if not specified the volume mount will be mounted to the root of the share.
 * All items in `envs_secret` are stored in the Azure Key Vault, with the env name as the secret name. A container app secret is create for each (referencing the Key Vault secret), and the container app environment variable references the Container App secret.
