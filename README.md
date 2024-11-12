@@ -11,7 +11,7 @@ Infrastructure deployed to host Azure Container Apps. Deploy only if you don't a
 
 ![Overview diagram](./docs/overview.png)
 
-The template deploys the following services to Azure:
+The template deploys the following services:
 
 * Log Analytics Workspace
 * Azure Key Vault using the Azure RBAC permissions model. You will have to make yourself a Secrets adminstrator if you would like view and update secrets 
