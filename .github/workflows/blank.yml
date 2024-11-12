@@ -35,3 +35,10 @@ jobs:
           echo $GITHUB_SHA
           git show --pretty="" --name-only $GITHUB_SHA
           echo Done
+
+      # Runs a set of commands using the runners shell
+      - name: Get old commit
+        run: |
+          echo 524349d0bc6888af037b1201b78039049ca52762
+          git show --pretty="" --name-only 524349d0bc6888af037b1201b78039049ca52762
+          echo Done
